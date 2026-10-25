@@ -4,17 +4,44 @@ import requests
 import streamlit as st
 
 st.set_page_config(
-    page_title="Excel Data Analyzer & Publisher", page_icon="📊", layout="wide"
+    page_title="Retail Sales & Lead Analytics Hub", page_icon="📊", layout="wide"
 )
 
-st.title("📊 Excel Data Analyzer & API Publisher")
+st.title("📊 Retail Sales, Leads & Payment Analytics Dashboard")
 st.markdown(
-    "Upload your Excel file for automated analysis, view key metrics, and"
-    " publish the processed data to your external API endpoint."
+    "Analyze your retail performance data, review lead metrics, and publish"
+    " processed records via API."
 )
 
-# Sidebar configuration for API publishing
-st.sidebar.header("API Configuration")
+
+@st.cache_data
+def load_data():
+  # Load datasets using appropriate headers and skipping metadata rows
+  leads = pd.read_csv("overall_lead_report_80_1792913172185.csv")
+  payments = pd.read_csv(
+      "PaymentModeReport-Abstract (10).csv", skiprows=5, encoding="latin1"
+  )
+  sales = pd.read_csv(
+      "SalesReport-Detail-25_10_2026.csv", skiprows=5, encoding="latin1"
+  )
+  return leads, payments, sales
+
+
+try:
+  leads_df, payments_df, sales_df = load_data()
+  st.sidebar.success("All raw data files loaded successfully!")
+except Exception as e:
+  st.error(f"Error loading data files: {e}")
+  st.stop()
+
+# Sidebar Navigation
+analysis_tab = st.sidebar.selectbox(
+    "Select Module", ["Overview & Metrics", "Sales Detail", "Lead Reports"]
+)
+
+# API Configuration Sidebar
+st.sidebar.markdown("---")
+st.sidebar.header("API Publication Settings")
 api_url = st.sidebar.text_input(
     "API Endpoint URL", placeholder="https://api.example.com/v1/data"
 )
@@ -22,77 +49,97 @@ api_token = st.sidebar.text_input(
     "API Authorization Token (Optional)", type="password"
 )
 
-# File uploader widget
-uploaded_file = st.file_uploader(
-    "Choose an Excel file", type=["xlsx", "xls"]
+if analysis_tab == "Overview & Metrics":
+  st.subheader("📈 Executive Summary")
+
+  col1, col2, col3 = st.columns(3)
+  col1.metric("Total Leads Recorded", len(leads_df))
+  col2.metric("Total Sales Transactions", len(sales_df))
+  col3.metric("Total Payment Records", len(payments_df))
+
+  st.markdown("---")
+  st.subheader("💡 Quick Preview of Sales Dataset")
+  st.dataframe(
+      sales_df[
+          [
+              "BillDate",
+              "BillNumber",
+              "CustomerName",
+              "ProductName",
+              "MRP",
+              "StoreName",
+          ]
+      ].head(10),
+      use_container_width=True,
+  )
+
+elif analysis_tab == "Sales Detail":
+  st.subheader("🛍️ Sales Detail Analytics")
+
+  if "StoreName" in sales_df.columns:
+    stores = ["All"] + list(sales_df["StoreName"].dropna().unique())
+    selected_store = st.selectbox("Filter by Store", stores)
+    filtered_sales = (
+        sales_df
+        if selected_store == "All"
+        else sales_df[sales_df["StoreName"] == selected_store]
+    )
+  else:
+    filtered_sales = sales_df
+
+  st.metric("Filtered Records Count", len(filtered_sales))
+  st.dataframe(filtered_sales.head(50), use_container_width=True)
+
+elif analysis_tab == "Lead Reports":
+  st.markdown("### 📋 Lead Generation & Status Report")
+  if "Business Unit" in leads_df.columns:
+    bu = ["All"] + list(leads_df["Business Unit"].dropna().unique())
+    selected_bu = st.selectbox("Filter by Business Unit", bu)
+    filtered_leads = (
+        leads_df
+        if selected_bu == "All"
+        else leads_df[leads_df["Business Unit"] == selected_bu]
+    )
+  else:
+    filtered_leads = leads_df
+
+  st.dataframe(filtered_leads.head(50), use_container_width=True)
+
+# Data Publishing Section
+st.markdown("---")
+st.subheader("🚀 Publish Dataset via API")
+dataset_choice = st.selectbox(
+    "Select Dataset to Publish", ["Sales Data", "Lead Data", "Payment Data"]
 )
 
-if uploaded_file is not None:
-  try:
-    # Read Excel file
-    excel_data = pd.ExcelFile(uploaded_file)
-    sheet_names = excel_data.sheet_names
-
-    selected_sheet = st.selectbox("Select Worksheet", sheet_names)
-    df = pd.read_excel(uploaded_file, sheet_name=selected_sheet)
-
-    st.success(
-        f"Successfully loaded '{selected_sheet}' with {df.shape[0]} rows and"
-        f" {df.shape[1]} columns."
+if st.button("Publish Selected Data"):
+  if not api_url:
+    st.error("Please provide a valid API Endpoint URL in the sidebar.")
+  else:
+    target_df = (
+        sales_df
+        if dataset_choice == "Sales Data"
+        else (leads_df if dataset_choice == "Lead Data" else payments_df)
     )
+    payload_sample = target_df.head(100).to_dict(
+        orient="records"
+    )  # Send sample payload
 
-    # Data Preview
-    st.subheader("📋 Data Preview")
-    st.dataframe(df.head(10), use_container_width=True)
+    headers = {"Content-Type": "application/json"}
+    if api_token:
+      headers["Authorization"] = f"Bearer {api_token}"
 
-    # Quick Analysis Metrics
-    st.subheader("📈 Quick Analysis")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total Rows", df.shape[0])
-    col2.metric("Total Columns", df.shape[1])
-    col3.metric("Missing Values", int(df.isna().sum().sum()))
-
-    # Numeric Summary
-    numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
-    if numeric_cols:
-      st.subheader("📊 Statistical Summary")
-      st.dataframe(df[numeric_cols].describe(), use_container_width=True)
-
-    # Data Publishing Section
-    st.markdown("---")
-    st.subheader("🚀 Publish Data via API")
-
-    if st.button("Publish Data"):
-      if not api_url:
-        st.error("Please enter a valid API Endpoint URL in the sidebar.")
+    try:
+      response = requests.post(api_url, json=payload_sample, headers=headers)
+      if response.status_code in [200, 201, 202]:
+        st.success(
+            f"Data successfully published! Status Code: {response.status_code}"
+        )
       else:
-        with st.spinner("Publishing data to endpoint..."):
-          # Convert DataFrame rows to JSON records payload
-          payload = df.to_dict(orient="records")
-          headers = {"Content-Type": "application/json"}
-          if api_token:
-            headers["Authorization"] = f"Bearer {api_token}"
-
-          try:
-            response = requests.post(api_url, json=payload, headers=headers)
-            if response.status_code in [200, 201, 202]:
-              st.success(
-                  f"Data published successfully! Status Code:"
-                  f" {response.status_code}"
-              )
-              try:
-                st.json(response.json())
-              except Exception:
-                st.write(response.text)
-            else:
-              st.error(
-                  f"Failed to publish data. Status Code: {response.status_code}"
-              )
-              st.text(response.text)
-          except Exception as e:
-            st.error(f"Connection error: {e}")
-
-  except Exception as e:
-    st.error(f"Error reading the Excel file: {e}")
-else:
-  st.info("Please upload an Excel file (.xlsx or .xls) to begin.")
+        st.error(
+            f"Failed to publish data. Server responded with status:"
+            f" {response.status_code}"
+        )
+        st.text(response.text)
+    except Exception as e:
+      st.error(f"Connection error: {e}")
