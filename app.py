@@ -1,4 +1,15 @@
 import os
+
+# Automatically creates .streamlit/config.toml on startup
+os.makedirs(".streamlit", exist_ok=True)
+config_path = ".streamlit/config.toml"
+if not os.path.exists(config_path):
+  with open(config_path, "w") as f:
+    f.write(
+        "[server]\nheadless = true\nenableCORS = false\n"
+        'enableXsrfProtection = false\nport = 10000\naddress = "0.0.0.0"\n'
+    )
+import os
 import pandas as pd
 import requests
 import streamlit as st
