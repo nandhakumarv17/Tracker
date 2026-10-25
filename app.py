@@ -1,18 +1,21 @@
 import os
+import pandas as pd
+import requests
+import streamlit as st
 
-# Automatically creates .streamlit/config.toml on startup
+# Automatically create .streamlit/config.toml on startup for Render deployment
 os.makedirs(".streamlit", exist_ok=True)
 config_path = ".streamlit/config.toml"
 if not os.path.exists(config_path):
   with open(config_path, "w") as f:
     f.write(
-        "[server]\nheadless = true\nenableCORS = false\n"
-        'enableXsrfProtection = false\nport = 10000\naddress = "0.0.0.0"\n'
+        "[server]\n"
+        "headless = true\n"
+        "enableCORS = false\n"
+        "enableXsrfProtection = false\n"
+        "port = 10000\n"
+        'address = "0.0.0.0"\n'
     )
-import os
-import pandas as pd
-import requests
-import streamlit as st
 
 st.set_page_config(
     page_title="Retail Sales & Lead Analytics Hub", page_icon="📊", layout="wide"
@@ -27,7 +30,6 @@ st.markdown(
 
 @st.cache_data
 def load_data():
-  # Load datasets using appropriate headers and skipping metadata rows
   leads = pd.read_csv("overall_lead_report_80_1792913172185.csv")
   payments = pd.read_csv(
       "PaymentModeReport-Abstract (10).csv", skiprows=5, encoding="latin1"
@@ -70,19 +72,19 @@ if analysis_tab == "Overview & Metrics":
 
   st.markdown("---")
   st.subheader("💡 Quick Preview of Sales Dataset")
-  st.dataframe(
-      sales_df[
-          [
-              "BillDate",
-              "BillNumber",
-              "CustomerName",
-              "ProductName",
-              "MRP",
-              "StoreName",
-          ]
-      ].head(10),
-      use_container_width=True,
-  )
+  cols_to_show = [
+      col
+      for col in [
+          "BillDate",
+          "BillNumber",
+          "CustomerName",
+          "ProductName",
+          "MRP",
+          "StoreName",
+      ]
+      if col in sales_df.columns
+  ]
+  st.dataframe(sales_df[cols_to_show].head(10), use_container_width=True)
 
 elif analysis_tab == "Sales Detail":
   st.subheader("🛍️ Sales Detail Analytics")
@@ -132,9 +134,7 @@ if st.button("Publish Selected Data"):
         if dataset_choice == "Sales Data"
         else (leads_df if dataset_choice == "Lead Data" else payments_df)
     )
-    payload_sample = target_df.head(100).to_dict(
-        orient="records"
-    )  # Send sample payload
+    payload_sample = target_df.head(100).to_dict(orient="records")
 
     headers = {"Content-Type": "application/json"}
     if api_token:
