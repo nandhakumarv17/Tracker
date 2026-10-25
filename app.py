@@ -1,21 +1,31 @@
 import os
+import shutil
+
+# --- Self-healing fix for Render/Git .streamlit file conflicts ---
+if os.path.exists(".streamlit"):
+  if not os.path.isdir(".streamlit"):
+    os.remove(".streamlit")
+  else:
+    secrets_path = os.path.join(".streamlit", "secrets.toml")
+    if os.path.exists(secrets_path) and not os.path.isfile(secrets_path):
+      shutil.rmtree(secrets_path, ignore_errors=True)
+
+os.makedirs(".streamlit", exist_ok=True)
+config_path = ".streamlit/config.toml"
+with open(config_path, "w") as f:
+  f.write(
+      "[server]\n"
+      "headless = true\n"
+      "enableCORS = false\n"
+      "enableXsrfProtection = false\n"
+      "port = 10000\n"
+      'address = "0.0.0.0"\n'
+  )
+# ---------------------------------------------------------------
+
 import pandas as pd
 import requests
 import streamlit as st
-
-# Automatically create .streamlit/config.toml on startup for Render deployment
-os.makedirs(".streamlit", exist_ok=True)
-config_path = ".streamlit/config.toml"
-if not os.path.exists(config_path):
-  with open(config_path, "w") as f:
-    f.write(
-        "[server]\n"
-        "headless = true\n"
-        "enableCORS = false\n"
-        "enableXsrfProtection = false\n"
-        "port = 10000\n"
-        'address = "0.0.0.0"\n'
-    )
 
 st.set_page_config(
     page_title="Retail Sales & Lead Analytics Hub", page_icon="📊", layout="wide"
